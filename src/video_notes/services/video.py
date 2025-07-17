@@ -1,10 +1,10 @@
 """Video service for extracting video information and downloading transcripts."""
 
+import logging
 import re
 
-import click
-import yt_dlp  # type: ignore[import-untyped]
-from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore[import-untyped]
+import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
 
 from video_notes.models.video import VideoInfo
 
@@ -47,7 +47,8 @@ def extract_video_info(url: str) -> VideoInfo:
     if video_id:
         video_info.video_id = video_id
     else:
-        click.echo(f"⚠️  Warning: Could not extract video ID from URL: {url}", err=True)
+        # If no ID, we can't proceed with other fetches, but we return the object
+        # with the URL, as the function is not designed to fail here.
         return video_info
 
     try:
@@ -80,8 +81,9 @@ def extract_video_info(url: str) -> VideoInfo:
                     except (ValueError, IndexError):
                         video_info.publish_date = upload_date
 
-    except Exception as e:
-        click.echo(f"⚠️  Warning: Could not extract video metadata: {e}", err=True)
+    except Exception:
+        # Log the warning but don't fail, as the function can return partial info.
+        logging.warning("Could not extract full video metadata.", exc_info=True)
 
     return video_info
 
@@ -96,8 +98,7 @@ def get_transcript_content(video_info: VideoInfo) -> str | None:
         Transcript content or None if failed.
     """
     if not video_info.video_id:
-        click.echo("❌ Error: No video ID available", err=True)
-        return None
+        raise ValueError("Cannot get transcript without a video ID.")
 
     try:
         # Try to get transcript in English first, then any available language
@@ -119,18 +120,12 @@ def get_transcript_content(video_info: VideoInfo) -> str | None:
                     transcript = transcript_list.find_generated_transcript(
                         transcript_list._generated_transcripts.keys()
                     )
-                except Exception as e:
-                    click.echo(
-                        f"⚠️  Warning: Could not get generated transcript: {e}",
-                        err=True,
-                    )
+                except Exception:
+                    # Log the warning and continue; will be handled by the check below.
+                    logging.warning("Could not find a specific transcript type.", exc_info=True)
 
         if not transcript:
-            click.echo(
-                f"❌ Error: No transcripts available for video {video_info.video_id}",
-                err=True,
-            )
-            return None
+            raise ValueError(f"No transcripts available for video {video_info.video_id}")
 
         # Fetch the transcript data
         transcript_data = transcript.fetch()
@@ -147,15 +142,10 @@ def get_transcript_content(video_info: VideoInfo) -> str | None:
 
         content = " ".join(content_parts)
 
-        click.echo("✅ Transcript downloaded to memory")
-        click.echo(f"📄 Transcript language: {transcript.language}")
-        click.echo(f"📄 Content length: {len(content)} characters")
-
         return content.strip()
 
     except Exception as e:
-        click.echo(f"❌ Error downloading transcript: {e}", err=True)
-        return None
+        raise ValueError(f"Error downloading transcript: {e}") from e
 
 
 def validate_youtube_url(url: str) -> bool:

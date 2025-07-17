@@ -26,16 +26,18 @@ class ProcessingConfig(BaseModel):
     This class holds all configuration options for processing YouTube transcripts.
 
     Attributes:
-        youtube_url (str): The YouTube video URL to process
-        model (str): The AI model to use for processing
-        output_folder (str): The directory where output files should be saved
-        save_transcript (bool): Whether to save the transcript file (defaults to False)
+        youtube_url (str): The YouTube video URL to process.
+        model (str): The AI model to use for processing.
+        output_folder (str): The directory where output files should be saved.
+        save_transcript (bool): Whether to save the transcript file (defaults to False).
+        notes (str | None): Manual notes to guide the summarization process.
     """
 
     youtube_url: str
     model: str
     output_folder: str = Field(default=".")
     save_transcript: bool = Field(default=False)
+    notes: str | None = Field(default=None)
 
 
 class ProcessingResult(BaseModel):

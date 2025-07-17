@@ -8,16 +8,14 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "click>=8.0.0",
     "youtube-transcript-api>=0.6.0",
     "yt-dlp>=2023.0.0",
     "ollama>=0.1.0",
     "python-dotenv>=1.1.1",
     "pydantic>=2.9.2",
+    "streamlit>=1.46.1",
 ]
 
-[project.scripts]
-video-notes = "video_notes.cli:cli"
 
 [dependency-groups]
 dev = [
@@ -105,19 +103,9 @@ exclude = [
     "dist/",
 ]
 
-[[tool.mypy.overrides]]
-module = "video_notes.cli"
-disallow_untyped_decorators = false
-
-[[tool.mypy.overrides]]
-module = "video_notes.services.video"
-warn_unused_ignores = false
-
 [tool.bandit]
 exclude_dirs = ["tests", "scripts"]
 skips = ["B101"]  # Skip assert_used test
-
-
 
 [tool.commitizen]
 name = "cz_conventional_commits"

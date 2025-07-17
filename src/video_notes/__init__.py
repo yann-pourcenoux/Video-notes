@@ -11,7 +11,6 @@ from video_notes.agents import (
     filename_generator,
     final_markdown,
 )
-from video_notes.cli import cli
 from video_notes.models.processing import (
     ProcessingConfig,
     ProcessingResult,
@@ -67,6 +66,4 @@ __all__ = [
     "get_safe_filename",
     "sanitize_filename",
     "write_text_file",
-    # CLI
-    "cli",
 ]

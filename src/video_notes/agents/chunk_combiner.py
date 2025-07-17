@@ -4,26 +4,78 @@ This agent takes multiple chunk summaries and combines them into a unified,
 comprehensive summary using AI services.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from . import ai_client
+from video_notes.agents.ai_client import generate_with_messages
 
 
 class CombinedSummary(BaseModel):
-    """Output model for combined summary."""
+    """Represents the combined summary of multiple chunks."""
 
-    summary: str = Field(..., description="The combined comprehensive summary")
-    success: bool = Field(..., description="Whether combination was successful")
-    error_message: str | None = Field(None, description="Error message if combination failed")
-    word_count: int = Field(..., description="Word count of the combined summary", ge=0)
-    chunks_processed: int = Field(
-        ..., description="Number of chunk summaries that were processed", ge=0
+    summary: str
+    chunks_processed: int
+
+
+def get_messages(chunk_summaries: list[str], notes: str | None = None) -> list[dict[str, str]]:
+    """Generate messages for combining chunk summaries.
+
+    Args:
+        chunk_summaries: A list of chunk summary strings.
+        notes: Optional manual notes to guide the summary.
+
+    Returns:
+        A list of message dictionaries for the AI client.
+    """
+    summaries_text = "\n\n---\n\n".join(chunk_summaries)
+
+    base_prompt = (
+        "You have been given a series of summaries from a long video transcript. "
+        "Your task is to synthesize them into a single, cohesive, and "
+        "well-structured summary.\n\n"
+        "Focus on creating a final output that:\n"
+        "- **Integrates Key Themes**: Identify and merge the main ideas, concepts, "
+        "and narratives from all summaries.\n"
+        "- **Maintains Logical Flow**: Organize the content in a clear, logical order.\n"
+        "- **Eliminates Redundancy**: Remove duplicate information and consolidate "
+        "related points.\n"
+        "- **Preserves Critical Information**: Ensure that essential facts, data, "
+        "and takeaways are retained."
     )
+
+    if notes:
+        notes_guidance = (
+            "A user has provided the following notes to guide the final summary. "
+            "Pay special attention to these points, ensuring they are prominently "
+            "addressed in the final output.\n\n"
+            f"USER NOTES:\n{notes}"
+        )
+        user_content = "\n\n".join(
+            [
+                base_prompt,
+                notes_guidance,
+                f"Here are the summaries:\n{summaries_text}",
+            ]
+        )
+    else:
+        user_content = f"{base_prompt}\n\nHere are the summaries:\n{summaries_text}"
+
+    system_message = (
+        "You are an expert at synthesizing information from multiple sources into "
+        "cohesive, comprehensive summaries. Always use proper markdown formatting "
+        "including headers, bullet points, **bold** for emphasis, and *italic* for "
+        "additional emphasis. Focus on creating a logical narrative flow."
+    )
+
+    return [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": user_content},
+    ]
 
 
 def combine_relevant_chunks(
     chunk_summaries: list[str],
-    model: str = "gemma3:12b",
+    model: str = "gemma:7b",
+    notes: str | None = None,
 ) -> CombinedSummary:
     """Combine multiple chunk summaries into a cohesive final summary.
 
@@ -32,108 +84,31 @@ def combine_relevant_chunks(
     the most important information.
 
     Args:
-        chunk_summaries: List of individual chunk summaries to combine
-        model: Ollama model name to use for generating the combined summary
+        chunk_summaries: List of individual chunk summaries to combine.
+        model: The name of the Ollama model to use.
+        notes: Optional manual notes to guide the summary.
 
     Returns:
-        CombinedSummary with the unified summary and metadata
+        CombinedSummary with the unified summary and metadata.
     """
-    # Validate input
     if not chunk_summaries:
-        return CombinedSummary(
-            summary="",
-            success=False,
-            error_message="No chunk summaries provided",
-            word_count=0,
-            chunks_processed=0,
-        )
+        return CombinedSummary(summary="", chunks_processed=0)
 
-    # Filter out empty summaries
-    valid_summaries = [summary.strip() for summary in chunk_summaries if summary.strip()]
-
+    valid_summaries = [s for s in chunk_summaries if s.strip()]
     if not valid_summaries:
         return CombinedSummary(
-            summary="",
-            success=False,
-            error_message="All chunk summaries are empty",
-            word_count=0,
+            summary="No valid chunk summaries were provided to combine.",
             chunks_processed=0,
         )
 
-    # Build the combination prompt
-    prompt_parts = []
+    messages = get_messages(valid_summaries, notes=notes)
 
-    prompt_parts.append(
-        "Create a comprehensive, well-structured final summary that synthesizes all the "
-        "key information."
+    response = generate_with_messages(messages=messages, model=model)
+
+    if not response:
+        return CombinedSummary(summary="", chunks_processed=len(valid_summaries))
+
+    return CombinedSummary(
+        summary=response,
+        chunks_processed=len(valid_summaries),
     )
-    prompt_parts.append("")
-
-    # Add instructions for synthesis
-    prompt_parts.extend(
-        [
-            "",
-            "Guidelines for synthesis:",
-            "- Identify and emphasize the most important themes and insights",
-            "- Remove redundancy while preserving key details",
-            "- Ensure logical flow and coherence",
-            "- Use proper markdown formatting with headers, emphasis, and structure",
-            "- Maintain the overall narrative and context",
-            "",
-            "Section summaries to combine:",
-            "",
-        ]
-    )
-
-    # Add each chunk summary with delimiters
-    for i, summary in enumerate(valid_summaries, 1):
-        prompt_parts.extend([f"### Section {i}:", summary, ""])
-
-    prompt_parts.append("Now create the comprehensive final summary:")
-
-    user_content = "\n".join(prompt_parts)
-
-    # Create messages for AI service
-    messages = [
-        {
-            "role": "system",
-            "content": "You are an expert at synthesizing information from multiple sources into "
-            "cohesive, comprehensive summaries. Always use proper markdown formatting "
-            "including headers, bullet points, **bold** for emphasis, and *italic* for "
-            "additional emphasis. Focus on creating a logical narrative flow.",
-        },
-        {"role": "user", "content": user_content},
-    ]
-
-    try:
-        # Generate combined summary using AI client
-        combined_text = ai_client.generate_with_messages(messages, model)
-
-        if combined_text is None or not combined_text.strip():
-            return CombinedSummary(
-                summary="",
-                success=False,
-                error_message="AI client returned no response or empty response",
-                word_count=0,
-                chunks_processed=len(valid_summaries),
-            )
-
-        # Calculate word count
-        word_count = len(combined_text.split())
-
-        return CombinedSummary(
-            summary=combined_text.strip(),
-            success=True,
-            error_message=None,
-            word_count=word_count,
-            chunks_processed=len(valid_summaries),
-        )
-
-    except Exception as e:
-        return CombinedSummary(
-            summary="",
-            success=False,
-            error_message=f"Combination failed: {str(e)}",
-            word_count=0,
-            chunks_processed=len(valid_summaries),
-        )

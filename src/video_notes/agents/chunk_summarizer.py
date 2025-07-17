@@ -8,42 +8,60 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
-from . import ai_client
+from .ai_client import generate_with_messages
 
 
-def get_messages(content: str, chunk_number: int) -> list[dict[str, str]]:
+def get_messages(
+    content: str,
+    chunk_number: int,
+    notes: str | None = None,
+) -> list[dict[str, str]]:
     """Generate messages for chunk summarization.
 
     Args:
-        content: The text content to summarize
-        chunk_number: The section number for context
+        content: The text content to summarize.
+        chunk_number: The section number for context.
+        notes: Optional manual notes to guide the summary.
 
     Returns:
-        List of message dictionaries for AI client
+        List of message dictionaries for AI client.
     """
-    chunk_summarization_template = """This is section {chunk_number} of a longer transcript.
+    base_prompt = f"""This is section {chunk_number} of a longer transcript.
 
 Extract and summarize the most important information. Focus on:
-• Key concepts and main ideas
-• Important facts, data points, or statistics
-• Actionable insights or practical takeaways
-• Notable quotes or examples
+- Key concepts and main ideas
+- Important facts, data points, or statistics
+- Actionable insights or practical takeaways
+- Notable quotes or examples"""
 
-Content to summarize:
-{content}"""
-
-    user_content = chunk_summarization_template.format(chunk_number=chunk_number, content=content)
+    if notes:
+        notes_guidance = (
+            "A user has provided the following notes to guide the summary. "
+            "Pay special attention to topics, keywords, or questions mentioned in these notes. "
+            "Use them to create a more focused and relevant summary that addresses these points."
+            "\n\n"
+            f"USER NOTES:\n{notes}"
+        )
+        user_content = "\n\n".join(
+            [
+                base_prompt,
+                notes_guidance,
+                f"Content to summarize:\n{content}",
+            ]
+        )
+    else:
+        user_content = f"{base_prompt}\n\nContent to summarize:\n{content}"
 
     system_content = """You are an expert at creating concise, well-structured summaries.
 
 FORMATTING REQUIREMENTS:
-• Always use bullet points (•) to organize information
-• Use **bold** for key terms, concepts, and important names
-• Keep each bullet point to 1-2 lines maximum
-• Start each summary with 3-5 main bullet points
-• Prioritize actionable insights and concrete information
-• Avoid lengthy paragraphs - break content into digestible points
-• Use clear, direct language without unnecessary words
+- Always use bullet points (-) to organize information
+- Use **bold** for key terms, concepts, and important names
+- Keep each bullet point to 1-2 lines maximum
+- Start each summary with 3-5 main bullet points
+- Prioritize actionable insights and concrete information
+- Avoid lengthy paragraphs - break content into digestible points
+- Use clear, direct language without unnecessary words
 
 EXAMPLE OUTPUT FORMAT:
 ```markdown
@@ -104,6 +122,7 @@ def summarize_chunk(
     chunk_content: str,
     chunk_index: int,
     model: str = "gemma3:12b",
+    notes: str | None = None,
 ) -> ChunkSummary:
     """Summarize a single text chunk using AI service.
 
@@ -114,7 +133,7 @@ def summarize_chunk(
         chunk_content: The text content to summarize
         chunk_index: Index of the chunk in the sequence
         model: Ollama model name to use for generation
-        temperature: AI generation temperature
+        notes: Optional manual notes to guide the summary.
 
     Returns:
         ChunkSummary with the generated summary and metadata
@@ -128,12 +147,12 @@ def summarize_chunk(
             error_message="Empty chunk content provided",
         )
 
-        # Create messages for AI service
-    messages = get_messages(chunk_content, chunk_index + 1)
+    # Create messages for AI service
+    messages = get_messages(chunk_content, chunk_index + 1, notes=notes)
 
     try:
         # Generate summary using AI client
-        summary_text = ai_client.generate_with_messages(messages, model)
+        summary_text = generate_with_messages(messages=messages, model=model)
 
         if summary_text is None or not summary_text.strip():
             return ChunkSummary(

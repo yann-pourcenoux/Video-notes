@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "2637:8501"
+    volumes:
+      - ./src:/app/src
+    # On macOS and Windows, use host.docker.internal to connect to the host
+    # On Linux, you might need to use --network="host" or find the host IP
+    environment:
+      - OLLAMA_HOST=host.docker.internal
