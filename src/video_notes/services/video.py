@@ -1,9 +1,9 @@
 """Video service for extracting video information and downloading transcripts."""
 
-import logging
 import re
 
 import yt_dlp
+from loguru import logger
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from video_notes.models.video import VideoInfo
@@ -83,7 +83,7 @@ def extract_video_info(url: str) -> VideoInfo:
 
     except Exception:
         # Log the warning but don't fail, as the function can return partial info.
-        logging.warning("Could not extract full video metadata.", exc_info=True)
+        logger.opt(exception=True).warning("Could not extract full video metadata.")
 
     return video_info
 
@@ -122,7 +122,7 @@ def get_transcript_content(video_info: VideoInfo) -> str | None:
                     )
                 except Exception:
                     # Log the warning and continue; will be handled by the check below.
-                    logging.warning("Could not find a specific transcript type.", exc_info=True)
+                    logger.opt(exception=True).warning("Could not find a specific transcript type.")
 
         if not transcript:
             raise ValueError(f"No transcripts available for video {video_info.video_id}")
